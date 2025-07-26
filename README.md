@@ -1,1 +1,1 @@
-JDA Discord Bot Template
+JDA Discord Bot with integrated chatgpt Template(REQUIRES PAID SUBSCRIPTION)
