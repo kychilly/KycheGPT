@@ -15,9 +15,9 @@ import java.util.Calendar;
 
 public class AIListener extends ListenerAdapter {
     // Hugging Face API Configuration
-    private final String HF_API_KEY = "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";
-    private final String HF_MODEL = "gpt2"; // supposedly works but it doesnt
-    private final String HF_API_URL = "https://api-inference.huggingface.co/models/" + HF_MODEL;
+    private static final String HF_API_KEY = "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";
+    private static final String HF_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"; // supposedly works but it doesnt
+    private static final String HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1";
 
     private final OkHttpClient httpClient = new OkHttpClient();
 
@@ -95,7 +95,7 @@ public class AIListener extends ListenerAdapter {
                     event.getChannel().sendMessage(response.substring(i, Math.min(i + 2000, response.length()))).queue();
                 }
             } else {
-                event.getChannel().sendMessage(response).queue();
+                event.getChannel().sendMessage("Here is my response : " + response).queue();
             }
         } catch (Exception e) {
             handleError(requestQueue.peek(), e);
@@ -112,44 +112,41 @@ public class AIListener extends ListenerAdapter {
         }
     }
 
-    private String getAIResponse(String prompt) throws IOException {
-        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private String getAIResponse(String prompt) {
+        try {
+            MediaType JSON = MediaType.get("application/json");
 
-        String apiUrl = "https://api-inference.huggingface.co/models/" + HF_MODEL;
-        System.out.println("API URL: " + apiUrl);
+            JsonObject requestBody = new JsonObject();
+            requestBody.addProperty("inputs", prompt);
 
-        JsonObject requestBody = new JsonObject();
-        requestBody.addProperty("inputs", prompt);
+            RequestBody body = RequestBody.create(requestBody.toString(), JSON);
 
+            Request request = new Request.Builder()
+                    .url(HF_API_URL)  // Should be https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1
+                    .post(body)
+                    .addHeader("Authorization", "Bearer " + HF_API_KEY)
+                    .addHeader("Accept", "application/json")
+                    .build();
 
-        JsonObject parameters = new JsonObject();
-        parameters.addProperty("max_new_tokens", 100);  // more reliable than `max_length` with modern models
-        parameters.addProperty("temperature", 0.7);
-        requestBody.add("parameters", parameters);
+            try (Response response = httpClient.newCall(request).execute()) {
+                int code = response.code();
+                String responseBody = response.body() != null ? response.body().string() : "";
 
-        Request request = new Request.Builder()
-                .url(apiUrl)
-                .post(RequestBody.create(requestBody.toString(), JSON))
-                .addHeader("Authorization", "Bearer " + HF_API_KEY)
-                .addHeader("Content-Type", "application/json")
-                .build();
+                System.out.println("DEBUG - Status: " + code);
+                System.out.println("DEBUG - Body: " + responseBody);
 
-        try (Response response = httpClient.newCall(request).execute()) {
-            String responseBody = response.body().string();
+                if (code == 404) {
+                    return "❌ Model not found (404). Check if the model name is correct: `" + HF_MODEL + "`";
+                } else if (code == 503) {
+                    return "⏳ Model is loading (503). Try again in a few seconds...";
+                } else if (!response.isSuccessful()) {
+                    return "❌ Error: HTTP " + code + " - " + responseBody;
+                }
 
-            if (response.code() == 503) {
-                return "⏳ The model is still loading. Please try again in 30 seconds.";
+                return parseHuggingFaceResponse(responseBody);
             }
-
-            if (!response.isSuccessful()) {
-                // Return the raw message if it's not JSON
-                return "❌ API Error " + response.code() + ": " + responseBody;
-            }
-
-            // Debug log (optional)
-            System.out.println("✅ HF Raw Response: " + responseBody);
-
-            return parseHuggingFaceResponse(responseBody);
+        } catch (IOException e) {
+            return "❌ IO Error: " + e.getMessage();
         }
     }
 
@@ -157,31 +154,13 @@ public class AIListener extends ListenerAdapter {
         try {
             JsonElement parsed = JsonParser.parseString(json);
 
-            // Case 1: Response is a JSON object with generated_text
-            if (parsed.isJsonObject()) {
-                JsonObject obj = parsed.getAsJsonObject();
-
-                if (obj.has("error")) {
-                    return "❌ Hugging Face Error: " + obj.get("error").getAsString();
-                }
-
-                if (obj.has("generated_text")) {
-                    return cleanAssistantReply(obj.get("generated_text").getAsString());
-                }
-            }
-
-            // Case 2: Array format (common for many models)
             if (parsed.isJsonArray()) {
                 JsonArray array = parsed.getAsJsonArray();
                 if (array.size() > 0 && array.get(0).getAsJsonObject().has("generated_text")) {
-                    String fullReply = array.get(0).getAsJsonObject().get("generated_text").getAsString();
-                    return cleanAssistantReply(fullReply);
+                    return cleanAssistantReply(array.get(0).getAsJsonObject().get("generated_text").getAsString());
                 }
             }
-
-            // If format is unexpected
             return "⚠️ Unexpected response format: " + json;
-
         } catch (JsonSyntaxException e) {
             return "❌ Failed to parse JSON: " + e.getMessage() + "\nRaw: " + json;
         }
@@ -201,15 +180,6 @@ public class AIListener extends ListenerAdapter {
     private synchronized void updateRequestCount() {
         dailyRequestCount.incrementAndGet();
         lastRequestTime = System.currentTimeMillis();
-    }
-
-    private String parseResponse(String json) {
-        return JsonParser.parseString(json)
-                .getAsJsonObject()
-                .getAsJsonArray("choices")
-                .get(0).getAsJsonObject()
-                .getAsJsonObject("message")
-                .get("content").getAsString();
     }
 
     private void showUsage(MessageChannel channel) {
@@ -253,43 +223,34 @@ public class AIListener extends ListenerAdapter {
     }
 
     private boolean testApiKey() {
-        try {
-            // Test against the whoami endpoint which always works
-            Request request = new Request.Builder()
-                    .url("https://huggingface.co/api/whoami-v2")
-                    .get()
-                    .addHeader("Authorization", "Bearer " + HF_API_KEY)
-                    .build();
+        Request request = new Request.Builder()
+                .url("https://huggingface.co/api/whoami-v2")
+                .addHeader("Authorization", "Bearer " + HF_API_KEY.trim()) // .trim() removes whitespace
+                .addHeader("Accept", "application/json") // Forces JSON response
+                .addHeader("User-Agent", "MyBot/1.0") // Avoids firewall blocks
+                .build();
 
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (response.isSuccessful()) {
-                    String body = response.body().string();
-                    System.out.println("✅ Key valid! Account info: " + body);
-                    return true;
-                }
-                System.err.println("❌ Key test failed. HTTP " + response.code() +
-                        "\nFull response: " + response.body().string());
-                return false;
-            }
+        try (Response response = httpClient.newCall(request).execute()) {
+            System.out.println("Response: " + response.body().string());
+            return response.isSuccessful();
         } catch (IOException e) {
-            System.err.println("🚨 Connection failed: " + e.getMessage());
+            System.err.println("Connection failed: " + e.getMessage());
             return false;
         }
     }
 
     // test this fuckass bot
     public static void testHuggingFaceAPI() throws IOException {
-        String apiUrl = "https://api-inference.huggingface.co/models/gpt2";
-        String json = "{\"inputs\":\"Hello\"}";  // Simple input
-
+        String json = "{\"inputs\":\"Hello\"}";
         Request request = new Request.Builder()
-                .url(apiUrl)
+                .url(HF_API_URL)
                 .post(RequestBody.create(json, MediaType.get("application/json")))
-                .addHeader("Authorization", "Bearer YOUR_KEY")
+                .addHeader("Authorization", "Bearer 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")
                 .build();
 
         try (Response response = new OkHttpClient().newCall(request).execute()) {
             System.out.println("Response: " + response.body().string());
+            System.out.println("DEBUG - Test URL: " + HF_API_URL);
         }
     }
 
