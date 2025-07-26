@@ -15,7 +15,7 @@ import java.util.Calendar;
 
 public class AIListener extends ListenerAdapter {
     // Hugging Face API Configuration
-    private static final String HF_API_KEY = "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";
+    private static final String HF_API_KEY = "working hf key";
     private static final String HF_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"; // supposedly works but it doesnt
     private static final String HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1";
 
@@ -245,7 +245,7 @@ public class AIListener extends ListenerAdapter {
         Request request = new Request.Builder()
                 .url(HF_API_URL)
                 .post(RequestBody.create(json, MediaType.get("application/json")))
-                .addHeader("Authorization", "Bearer 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")
+                .addHeader("Authorization", "Bearer (key suppsoed to go here)")
                 .build();
 
         try (Response response = new OkHttpClient().newCall(request).execute()) {
