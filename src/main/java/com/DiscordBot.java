@@ -1,6 +1,8 @@
 package com;
 
 import com.Discord.DiscordBot.commands.CommandManager;
+import com.Discord.DiscordBot.listeners.AIListener;
+import com.Discord.DiscordBot.listeners.StatusListener;
 import io.github.cdimascio.dotenv.Dotenv;
 import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.entities.Activity;
@@ -22,7 +24,7 @@ public class DiscordBot {
 
         DefaultShardManagerBuilder builder = DefaultShardManagerBuilder.createDefault(token);
         builder.setStatus(OnlineStatus.ONLINE);
-        builder.setActivity(Activity.watching("the sunflowers"));
+        builder.setActivity(Activity.customStatus("Doing 4m+ pages of homework"));
         builder.enableIntents(GatewayIntent.MESSAGE_CONTENT);
         builder.enableIntents(GatewayIntent.GUILD_MEMBERS);
         builder.setMemberCachePolicy(MemberCachePolicy.ALL);
@@ -31,6 +33,8 @@ public class DiscordBot {
         shardManager = builder.build();
 
         // Register event listeners
+        shardManager.addEventListener(new AIListener());
+        shardManager.addEventListener(new StatusListener());
         shardManager.addEventListener(new CommandManager());
 
     }
