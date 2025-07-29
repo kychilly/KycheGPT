@@ -1,8 +1,7 @@
 package com;
 
 import com.Discord.DiscordBot.commands.CommandManager;
-import com.Discord.DiscordBot.listeners.AIListener;
-import com.Discord.DiscordBot.listeners.ChatBotListener;
+import com.Discord.DiscordBot.listeners.GroqChatBotListener;
 import com.Discord.DiscordBot.listeners.StatusListener;
 import io.github.cdimascio.dotenv.Dotenv;
 import net.dv8tion.jda.api.OnlineStatus;
@@ -34,10 +33,9 @@ public class DiscordBot {
         shardManager = builder.build();
 
         // Register event listeners
-        //shardManager.addEventListener(new AIListener());
         shardManager.addEventListener(new StatusListener());
+        shardManager.addEventListener(new GroqChatBotListener());
         shardManager.addEventListener(new CommandManager());
-        shardManager.addEventListener(new ChatBotListener());
 
     }
 
