@@ -24,8 +24,8 @@ public class CommandManager extends ListenerAdapter {
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
         String command = event.getName();
-        if (command.equalsIgnoreCase("tester")) {
-            //add code here
+        if (command.equalsIgnoreCase("ask")) {
+            AICommand.execute(event);
         }
 
     }
@@ -34,7 +34,31 @@ public class CommandManager extends ListenerAdapter {
     public void onGuildReady(@NotNull GuildReadyEvent event) {
         List<CommandData> commandData = new ArrayList<>();
 
-        //filler commands
-        commandData.add(Commands.slash("welcome", "welcomes user"));
+        // Slash AI Command
+        commandData.add(AICommand.getCommandData());
+
+        //updates all commands in guilds
+        event.getGuild().updateCommands()
+                .addCommands(commandData)
+                .queue(
+                        success -> System.out.println("✅ Commands registered in " + event.getGuild().getName()),
+                        error -> System.err.println("❌ Failed in " + event.getGuild().getName() + ": " + error.getMessage())
+                );
+    }
+
+    @Override
+    public void onGuildJoin(GuildJoinEvent event) {
+        List<CommandData> commandData = new ArrayList<>();
+
+        // Slash AI Command
+        commandData.add(AICommand.getCommandData());
+
+        //updates all commands in guilds
+        event.getGuild().updateCommands()
+                .addCommands(commandData)
+                .queue(
+                        success -> System.out.println("✅ Commands registered in " + event.getGuild().getName()),
+                        error -> System.err.println("❌ Failed in " + event.getGuild().getName() + ": " + error.getMessage())
+                );
     }
 }

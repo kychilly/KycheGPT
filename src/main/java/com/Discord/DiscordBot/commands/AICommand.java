@@ -1,24 +1,22 @@
-package com.Discord.DiscordBot.listeners;
+package com.Discord.DiscordBot.commands;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.github.cdimascio.dotenv.Dotenv;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
-import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
-import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-
-import okhttp3.Request;
+import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.interactions.commands.OptionType;
+import net.dv8tion.jda.api.interactions.commands.build.CommandData;
+import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import okhttp3.*;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 
-public class GroqChatBotListener extends ListenerAdapter {
+public class AICommand {
 
     private static final Dotenv config = Dotenv.configure().ignoreIfMissing().load();
     private static final String GROQ_API_KEY = config.get("GROQ_API_KEY");
@@ -27,17 +25,17 @@ public class GroqChatBotListener extends ListenerAdapter {
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     // Map to track last request times per user
-    private final Map<String, Long> lastUsed = new HashMap<>();
+    private static final Map<String, Long> lastUsed = new HashMap<>();
     private static final long COOLDOWN_MILLIS = 5000; // 5 seconds
 
-    @Override
-    public void onMessageReceived(MessageReceivedEvent event) {
-        if (event.getAuthor().isBot()) return;
+    public static CommandData getCommandData() {
+        return Commands.slash("ask", "Ask KycheGPT a question!")
+                .addOption(OptionType.STRING,"prompt", "What do you want to ask KycheGPT?", true);
+    }
 
-        String content = event.getMessage().getContentRaw();
-        if (!content.startsWith("!ask ")) return;
-
-        String userId = event.getAuthor().getId();
+    public static void execute(SlashCommandInteractionEvent event) {
+        String message = event.getOption("prompt").getAsString();
+        String userId = event.getMember().getId();
         long now = Instant.now().toEpochMilli();
 
         if (lastUsed.containsKey(userId)) {
@@ -45,29 +43,29 @@ public class GroqChatBotListener extends ListenerAdapter {
             long remaining = COOLDOWN_MILLIS - (now - last);
             if (remaining > 0) {
                 long seconds = (remaining + 999) / 1000;
-                event.getChannel().sendMessage("⏳ Please wait " + seconds + " more second" + (seconds == 1 ? "" : "s") + " before using me!").queue();
+                event.reply("⏳ Please wait " + seconds + " more second" + (seconds == 1 ? "" : "s") + " before using me!")
+                        .setEphemeral(true)
+                        .queue();
                 return;
             }
         }
 
         lastUsed.put(userId, now); // Update usage time
 
-        String prompt = content.substring(5);
-        MessageChannel channel = event.getChannel();
+        event.deferReply().queue(); // Acknowledge the interaction first
 
         new Thread(() -> {
             try {
-                channel.sendTyping().queue();
-                String reply = getGroqReply(prompt);
-                sendReplyInChunks(reply, channel);
+                String reply = getGroqReply(message);
+                sendReplyInChunks(reply, event);
             } catch (Exception e) {
                 e.printStackTrace();
-                channel.sendMessage("⚠️ Error talking to the AI.").queue();
+                event.getHook().sendMessage("⚠️ Error talking to the AI.").queue();
             }
         }).start();
     }
 
-    private String getGroqReply(String prompt) throws IOException {
+    private static String getGroqReply(String prompt) throws IOException {
         JsonArray messages = new JsonArray();
 
         JsonObject userMessage = new JsonObject();
@@ -102,7 +100,7 @@ public class GroqChatBotListener extends ListenerAdapter {
         }
     }
 
-    private String changeToKyche(String message) {
+    private static String changeToKyche(String message) {
         // Normalize lookalikes first
         String normalized = noBypassingBadWords(message);
 
@@ -130,7 +128,7 @@ public class GroqChatBotListener extends ListenerAdapter {
     }
 
     // Normalize common lookalike characters to latin equivalents
-    private String noBypassingBadWords(String input) {
+    private static String noBypassingBadWords(String input) {
         return input
                 .replace('і', 'i')  // Cyrillic small i
                 .replace('І', 'I')  // Cyrillic capital i
@@ -147,11 +145,10 @@ public class GroqChatBotListener extends ListenerAdapter {
                 ;
     }
 
-
-
-    private void sendReplyInChunks(String reply, MessageChannel channel) {
+    private static void sendReplyInChunks(String reply, SlashCommandInteractionEvent event) {
         int maxLength = 2000;
         int start = 0;
+        boolean firstChunk = true;
 
         while (start < reply.length()) {
             int end = Math.min(start + maxLength, reply.length());
@@ -165,7 +162,13 @@ public class GroqChatBotListener extends ListenerAdapter {
             }
 
             String chunk = reply.substring(start, end).trim();
-            channel.sendMessage(chunk).queue();
+
+            if (firstChunk) {
+                event.getHook().sendMessage(chunk).queue();
+                firstChunk = false;
+            } else {
+                event.getHook().sendMessage(chunk).queue();
+            }
 
             start = end;
             while (start < reply.length() && reply.charAt(start) == ' ') start++; // skip space
